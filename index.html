@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Eon Quant — Agent Dashboard</title>
+<style>
+  :root { --ink:#0A0D14; --paper:#FAF8F3; --teal:#00D4A8; --amber:#FFB020; --red:#FF4D4D; --grey:#8892A0; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body { background: var(--ink); color: var(--paper); font: 14px/1.45 "DM Sans", -apple-system, system-ui, sans-serif; overflow: hidden; }
+  #scene { position: fixed; inset: 0; }
+  #sidebar { position: fixed; top: 14px; left: 14px; z-index: 5; background: rgba(10,13,20,.78); border: 1px solid rgba(250,248,243,.12);
+    border-radius: 10px; padding: 12px 14px; min-width: 215px; backdrop-filter: blur(6px); }
+  #sidebar h1 { font-size: 14px; font-weight: 700; letter-spacing: .04em; margin-bottom: 6px; color: var(--teal); }
+  #sidebar .row { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; padding: 2px 0; color: var(--paper); }
+  #sidebar .row b { font-weight: 500; color: var(--grey); }
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 99px; font-size: 11px; }
+  .badge.ok { background: rgba(0,212,168,.16); color: var(--teal); }
+  .badge.partial { background: rgba(255,176,32,.16); color: var(--amber); }
+  .badge.failed, .badge.stale { background: rgba(255,77,77,.16); color: var(--red); }
+  #debug { position: fixed; right: 14px; top: 14px; z-index: 5; background: rgba(10,13,20,.78); border: 1px solid rgba(250,248,243,.12);
+    border-radius: 10px; padding: 12px 14px; font-size: 12px; max-width: 330px; }
+  #debug .leg { padding: 3px 0; } #debug .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; }
+  .live { background: var(--teal); } .pending { background: var(--amber); } .blocked { background: var(--red); } .unknown { background: var(--grey); }
+  .node-label { color: var(--paper); font: 11px/1.2 "DM Sans", system-ui, sans-serif; text-align: center; white-space: nowrap;
+    text-shadow: 0 1px 6px rgba(0,0,0,.9); opacity: .92; }
+  .node-label small { color: var(--grey); display: block; font-size: 9.5px; letter-spacing: .06em; }
+  #modal { position: fixed; inset: 0; z-index: 20; background: rgba(10,13,20,.92); display: flex; align-items: center; justify-content: center; }
+  #modal.hidden, #debug.hidden { display: none; }
+  #modal .card { background: #11151f; border: 1px solid rgba(0,212,168,.35); border-radius: 14px; padding: 26px; width: min(440px, 92vw); }
+  #modal h2 { font-size: 16px; color: var(--teal); margin-bottom: 10px; }
+  #modal p { font-size: 12.5px; color: var(--grey); margin-bottom: 14px; }
+  #modal ol { font-size: 12px; color: var(--paper); margin: 0 0 16px 18px; }
+  #modal ol li { margin-bottom: 3px; }
+  #modal input[type=password] { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(250,248,243,.2);
+    background: var(--ink); color: var(--paper); font-size: 13px; }
+  #modal label { display: flex; gap: 7px; align-items: center; font-size: 12px; color: var(--grey); margin: 12px 0 16px; }
+  #modal button { width: 100%; padding: 10px; border: 0; border-radius: 8px; background: var(--teal); color: var(--ink); font-weight: 700; font-size: 13px; cursor: pointer; }
+  #tooltip { position: fixed; z-index: 15; background: #11151f; border: 1px solid rgba(0,212,168,.35); border-radius: 8px;
+    padding: 7px 10px; font-size: 11.5px; pointer-events: none; opacity: 0; transition: opacity .12s; max-width: 260px; }
+  #tooltip.show { opacity: 1; }
+  #tooltip small { color: var(--grey); }
+  #panel { position: fixed; top: 0; right: 0; height: 100%; width: min(340px, 88vw); z-index: 10; background: rgba(13,17,26,.96);
+    border-left: 1px solid rgba(0,212,168,.25); padding: 22px; transform: translateX(105%); transition: transform .3s ease; backdrop-filter: blur(8px); }
+  #panel.open { transform: translateX(0); }
+  #panel h2 { font-size: 19px; margin: 4px 0 2px; }
+  #panel #p-sub { color: var(--grey); font-size: 12px; margin-bottom: 16px; }
+  #panel h3 { font-size: 11px; letter-spacing: .08em; color: var(--grey); margin: 16px 0 7px; text-transform: uppercase; }
+  #p-close { position: absolute; top: 14px; right: 14px; background: none; border: 0; color: var(--grey); font-size: 16px; cursor: pointer; }
+  .chip { display: inline-block; margin: 0 6px 6px 0; padding: 3px 9px; border-radius: 99px; font-size: 11.5px; border: 1px solid; }
+  .chip.pass { color: var(--teal); border-color: rgba(0,212,168,.5); background: rgba(0,212,168,.08); }
+  .chip.fail { color: var(--amber); border-color: rgba(255,176,32,.5); background: rgba(255,176,32,.08); }
+  .chip.unknown { color: #B9C2CE; border-color: rgba(136,146,160,.45); background: rgba(136,146,160,.10); }
+  #p-blockers { margin-left: 16px; font-size: 12px; color: var(--paper); }
+  #p-blockers li { margin-bottom: 6px; } #p-blockers .none { color: var(--grey); list-style: none; margin-left: -16px; }
+  #p-meta { font-size: 11px; color: var(--grey); margin-top: 14px; }
+  #p-ask { width: 100%; margin-top: 18px; padding: 10px; border: 0; border-radius: 8px; background: var(--teal); color: var(--ink);
+    font-weight: 700; font-size: 13px; cursor: pointer; }
+  #toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(80px); z-index: 30; background: #11151f;
+    border: 1px solid rgba(0,212,168,.4); color: var(--paper); padding: 10px 16px; border-radius: 10px; font-size: 12.5px; transition: transform .25s; }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  noscript { position: fixed; inset: 0; display: grid; place-items: center; background: var(--ink); color: var(--paper); z-index: 50; padding: 30px; }
+  .demo-instant * { transition: none !important; } /* headless verification: CSS transitions freeze under virtual time */
+</style>
+</head>
+<body>
+<noscript>3D Agent Dashboard requires JavaScript. Strategy status lives in the Jarvis vault: <code>01-Meta/agent-dashboard-v1-design.md</code>.</noscript>
+
+<div id="scene"></div>
+
+<div id="sidebar">
+  <h1>EON QUANT · AGENT DASHBOARD</h1>
+  <div class="row"><b>parse</b><span id="s-health" class="badge failed">—</span></div>
+  <div class="row"><b>legs / pipeline</b><span id="s-counts">— / —</span></div>
+  <div class="row"><b>last commit</b><span id="s-commit">—</span></div>
+  <div class="row"><b>refreshed</b><span id="s-refresh">never</span></div>
+  <div class="row"><b>feed</b><span id="s-feed" class="badge ok">starting</span></div>
+</div>
+
+<div id="debug"><div style="color:var(--grey);margin-bottom:5px">debug render (3D lands in Task 5)</div><div id="debug-list">—</div></div>
+
+<div id="modal" class="hidden">
+  <div class="card">
+    <h2>Read token required</h2>
+    <p>This page is a static shell — it holds no data and no secrets. It reads the private Jarvis vault with a token that stays on this device (localStorage), never committed anywhere.</p>
+    <ol>
+      <li>GitHub → Settings → <b>Developer settings</b></li>
+      <li><b>Fine-grained tokens</b> → Generate new token</li>
+      <li>Repository access: <b>Only select repositories</b> → <code>salvagraci/Jarvis</code></li>
+      <li>Permissions → <b>Contents: Read-only</b> (nothing else)</li>
+      <li>Generate, paste below</li>
+    </ol>
+    <input id="pat" type="password" placeholder="github_pat_…" autocomplete="off">
+    <label><input id="remember" type="checkbox" checked> remember on this device</label>
+    <button id="save-pat">Connect</button>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<div id="panel">
+  <button id="p-close" aria-label="close">✕</button>
+  <h2 id="p-title">—</h2>
+  <div id="p-sub"></div>
+  <h3>Gates</h3><div id="p-chips"></div>
+  <h3>Blockers</h3><ul id="p-blockers"></ul>
+  <div id="p-meta"></div>
+  <button id="p-ask">Ask Claude about this</button>
+</div>
+
+<div id="toast"></div>
+
+<script type="importmap">{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"}}</script>
+<script type="module">
+import { parseVaultState, pickNewestSession } from './agent-dashboard-parser.mjs';
+import * as THREE from 'three';
+import { SVGLoader } from 'three/addons/loaders/SVGLoader.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+const OWNER = 'salvagraci', REPO = 'Jarvis', POLL_MS = 60_000, TOKEN_KEY = 'eq_dash_pat';
+const $ = id => document.getElementById(id);
+const store = () => localStorage.getItem(TOKEN_KEY) ? localStorage : sessionStorage;
+const getToken = () => localStorage.getItem(TOKEN_KEY) ?? sessionStorage.getItem(TOKEN_KEY);
+
+let lastGood = null, lastSuccessAt = null, timer = null;
+const etags = new Map(), cache = new Map();
+
+function toast(msg, ms = 2600) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), ms); }
+
+// === 3D SCENE ===
+const CFG = {
+  colors: { live: 0x00D4A8, pending: 0xFFB020, blocked: 0xFF4D4D, unknown: 0x8892A0 },
+  innerR: 3.0, outerR: 4.5, nodeR: 0.3, tilt: -24 * Math.PI / 180, spinPeriod: 15, pulsePeriod: 2,
+};
+const EON_MARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><path d="M28.1,72.9c-.1,13.88,14.85,22.67,26.93,15.84l22.66-12.82c8.84-5,6.57-22.35,2.27-23.77h-.72s-3.96,2.35-3.96,2.35c3.61,5.82,2.39,13.1-4.56,16.82l-9.88,5.71-6.82,3.74c-1.71,.98-3.79,2.32-5.54,2.45-6.95,.6-12.89-4.72-12.51-12.72l.17-19.61c0-.33,0-.43,0-.66l.08-9.73-7.84-.07c-.03,.38-.05,.76-.05,1.15l-.24,31.35Z"/><path d="M76,50.83c12.07-6.85,12.21-24.19,.25-31.24L53.82,6.38c-8.76-5.16-22.64,5.48-21.72,9.92l.35,.62,4.01,2.25c3.24-6.03,10.15-8.62,16.84-4.46l9.88,5.7,6.65,4.04c1.7,.99,3.9,2.13,4.89,3.57,4,5.72,2.36,13.53-4.76,17.2l-17.07,9.66c-.29,.16-.37,.21-.58,.33l-8.47,4.79,3.86,6.82c.34-.16,.68-.34,1.02-.53l27.26-15.47Z"/><path d="M32.4,17.16c-11.97-7.03-27.06,1.52-27.18,15.4l-.23,26.03c-.09,10.16,16.07,16.87,19.46,13.85l.36-.62-.06-4.6c-6.85,.21-12.54-4.48-12.28-12.36v-11.41s.17-7.78,.17-7.78c0-1.97-.11-4.44,.64-6.02,2.95-6.32,10.53-8.81,17.27-4.47l16.9,9.95c.29,.17,.37,.22,.57,.34l8.39,4.94,3.98-6.76c-.31-.22-.63-.42-.97-.62l-27.03-15.88Z"/></svg>`;
+
+const three = { ready: false, nodes: new Map() }; // key: leg.id | pipeline.name → mesh
+
+function centralMaterial() {
+  three.centralMat = new THREE.MeshStandardMaterial({ color: 0xFAF8F3, emissive: 0x00D4A8, emissiveIntensity: 0.9, metalness: 0.3, roughness: 0.4 });
+  return three.centralMat;
+}
+
+function buildCentralForm() {
+  try {
+    const paths = new SVGLoader().parse(EON_MARK_SVG).paths;
+    const g = new THREE.Group(); const mat = centralMaterial(); let verts = 0;
+    for (const p of paths) for (const shape of SVGLoader.createShapes(p)) {
+      const geo = new THREE.ExtrudeGeometry(shape, { depth: 12, bevelEnabled: true, bevelSize: 1.5, bevelThickness: 1.5, curveSegments: 10 });
+      verts += geo.attributes.position.count;
+      g.add(new THREE.Mesh(geo, mat));
+    }
+    if (!verts) throw new Error('empty geometry');
+    const s = 2.2 / 96;
+    g.scale.set(s, -s, s); // SVG y-down → three y-up
+    const box = new THREE.Box3().setFromObject(g);
+    g.position.sub(box.getCenter(new THREE.Vector3()));
+    const wrap = new THREE.Group(); wrap.add(g);
+    wrap.userData.form = 'eon-mark';
+    return wrap;
+  } catch (e) {
+    console.warn('SVG extrusion failed → icosahedron fallback:', e.message);
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1, 0), centralMaterial());
+    m.userData.form = 'icosahedron-fallback';
+    return m;
+  }
+}
+
+function nodeStatusColor(e) {
+  const key = (e.status === 'running' || e.status === 'queued') ? 'pending' : e.status;
+  return CFG.colors[key] ?? CFG.colors.unknown;
+}
+
+function makeNode(e) {
+  const mat = new THREE.MeshStandardMaterial({ color: 0x11151f, emissive: nodeStatusColor(e),
+    emissiveIntensity: e.status === 'queued' ? 0.55 : 1.0, roughness: 0.35 });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(CFG.nodeR, 32, 32), mat);
+  const div = document.createElement('div'); div.className = 'node-label';
+  div.innerHTML = e.pair ? `${e.pair} ${e.tf}<small>${e.code2} · ${e.id}</small>` : `${e.name}<small>${e.stage}</small>`;
+  const lbl = new CSS2DObject(div); lbl.position.set(0, -0.55, 0);
+  mesh.add(lbl);
+  mesh.userData.entity = e; mesh.userData.label = div;
+  return mesh;
+}
+
+// Ring phases are solved, not fixed: nodes must never park on the camera axis
+// (in front of / behind the central form — spec occlusion rule), and outer nodes
+// must stay off inner spokes. Holds for ANY node count, not just today's 4+2.
+const CAM_AXES = [Math.PI / 2, 3 * Math.PI / 2];
+const angDist = (a, b) => { const d = Math.abs(a - b) % (2 * Math.PI); return Math.min(d, 2 * Math.PI - d); };
+function bestPhase(n, avoid) {
+  if (!n) return 0;
+  let best = 0, bestD = -1;
+  for (let s = 0; s < 64; s++) {
+    const p = s * Math.PI / 32;
+    let d = Infinity;
+    for (let k = 0; k < n; k++) {
+      const a = (p + k * 2 * Math.PI / n) % (2 * Math.PI);
+      for (const ax of avoid) d = Math.min(d, angDist(a, ax));
+    }
+    if (d > bestD + 1e-9) { bestD = d; best = p; }
+  }
+  return best;
+}
+const ringAngles = (n, phase) => Array.from({ length: n }, (_, i) => phase + i * 2 * Math.PI / n);
+function ringTargets(state) {
+  const innerA = ringAngles(state.legs.length, bestPhase(state.legs.length, CAM_AXES));
+  const outerA = ringAngles(state.pipeline.length, bestPhase(state.pipeline.length, [...CAM_AXES, ...innerA]));
+  return { innerA, outerA };
+}
+const angleToPos = (a, R) => new THREE.Vector3(Math.cos(a) * R, 0, Math.sin(a) * R);
+
+function buildNodes(state) {
+  const { innerA, outerA } = ringTargets(state);
+  state.legs.forEach((leg, i) => {
+    const m = makeNode(leg); m.position.copy(angleToPos(innerA[i], CFG.innerR));
+    three.nodes.set(leg.id, m); three.system.add(m);
+  });
+  state.pipeline.forEach((p, i) => {
+    const m = makeNode(p); m.position.copy(angleToPos(outerA[i], CFG.outerR));
+    three.nodes.set(p.name, m); three.system.add(m);
+  });
+}
+
+// --- tween system (no lib) ---
+const tweens = new Set();
+const easeInOut = t => t < .5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2;
+function tween(ms, onU, onDone) { tweens.add({ t0: performance.now(), ms, onU, onDone }); }
+function runTweens(now) {
+  for (const tw of [...tweens]) {
+    const k = Math.min(1, (now - tw.t0) / tw.ms);
+    tw.onU(easeInOut(k));
+    if (k >= 1) { tweens.delete(tw); tw.onDone?.(); }
+  }
+}
+
+// --- reconcile-in-place: scene is built once, refreshes morph it (acceptance #3) ---
+const nodeKey = e => e.id ?? e.name;
+const labelHtml = e => e.pair ? `${e.pair} ${e.tf}<small>${e.code2} · ${e.id}</small>` : `${e.name}<small>${e.stage}</small>`;
+
+function addNode(e) {
+  const m = makeNode(e);
+  m.position.set(0, 0, 0); m.scale.setScalar(0.001); // born at center (spec: animate in from center)
+  three.nodes.set(nodeKey(e), m); three.system.add(m);
+}
+function removeNode(key, mesh) {
+  three.nodes.delete(key);
+  const s0 = mesh.scale.x;
+  tween(800, k => mesh.scale.setScalar(Math.max(0.001, s0 * (1 - k))),
+    () => { three.system.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); mesh.userData.label?.remove(); });
+}
+function layoutRingAnimated(entities, R, angles) {
+  entities.forEach((e, i) => {
+    const m = three.nodes.get(nodeKey(e)); if (!m) return;
+    const target = angleToPos(angles[i], R);
+    if (m.position.distanceTo(target) < 1e-4) return;
+    const from = m.position.clone(), s0 = m.scale.x;
+    tween(1000, k => { m.position.lerpVectors(from, target, k); m.scale.setScalar(s0 + (1 - s0) * k); });
+  });
+}
+function reconcile(state) {
+  const want = new Map([...state.legs, ...state.pipeline].map(e => [nodeKey(e), e]));
+  let changed = false;
+  for (const [key, mesh] of [...three.nodes]) {
+    const e = want.get(key);
+    if (!e) { changed = true; removeNode(key, mesh); continue; }
+    const toHex = nodeStatusColor(e);
+    if (mesh.material.emissive.getHex() !== toHex) {
+      changed = true;
+      const from = mesh.material.emissive.clone(), to = new THREE.Color(toHex);
+      tween(1000, k => mesh.material.emissive.copy(from).lerp(to, k));
+    }
+    mesh.material.emissiveIntensity = e.status === 'queued' ? 0.55 : 1.0;
+    mesh.userData.entity = e;
+    mesh.userData.label.innerHTML = labelHtml(e);
+  }
+  const fresh = [...state.legs, ...state.pipeline].filter(e => !three.nodes.has(nodeKey(e)));
+  if (fresh.length) { changed = true; fresh.forEach(addNode); }
+  const { innerA, outerA } = ringTargets(state);
+  layoutRingAnimated(state.legs, CFG.innerR, innerA);
+  layoutRingAnimated(state.pipeline, CFG.outerR, outerA);
+  if (changed) tween(2000, k => { three.spike = (1 - k) * 0.5; }); // central pulse acknowledges the change
+}
+
+function sceneRender(state) {
+  if (!three.ready) return;
+  if (!three.nodes.size) buildNodes(state);
+  else reconcile(state);
+}
+
+function tick() {
+  requestAnimationFrame(tick);
+  const dt = three.clock.getDelta(), t = three.clock.elapsedTime;
+  runTweens(performance.now());
+  three.central.rotation.y += dt * (Math.PI * 2 / CFG.spinPeriod) * three.spinMult;
+  three.centralMat.emissiveIntensity = 0.9 + 0.1 * Math.sin(t * Math.PI * 2 / CFG.pulsePeriod) + (three.spike ?? 0);
+  const f = three.fps; f.acc += dt; f.n++;
+  if (f.n >= 60) {
+    const fps = f.n / f.acc; f.acc = 0; f.n = 0;
+    if (!f.degraded && fps < 30 && ++f.bad >= 3) {
+      f.degraded = true; three.renderer.setPixelRatio(Math.max(1, devicePixelRatio / 2));
+      toast('Low FPS — rendering at reduced resolution');
+    } else if (fps >= 30) f.bad = 0;
+  }
+  three.renderer.render(three.scene, three.camera);
+  three.labels.render(three.scene, three.camera);
+}
+
+function initScene() {
+  const el = $('scene');
+  three.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  three.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  three.renderer.setSize(innerWidth, innerHeight);
+  el.appendChild(three.renderer.domElement);
+  three.labels = new CSS2DRenderer();
+  three.labels.setSize(innerWidth, innerHeight);
+  Object.assign(three.labels.domElement.style, { position: 'absolute', top: '0', left: '0', pointerEvents: 'none' });
+  el.appendChild(three.labels.domElement);
+  three.scene = new THREE.Scene();
+  three.camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
+  three.camera.position.set(0, 4.2, 9); three.camera.lookAt(0, 0, 0);
+  const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(5, 6, 4);
+  const fill = new THREE.DirectionalLight(0x3355AA, 0.5); fill.position.set(-4, 1, -3);
+  three.scene.add(key, fill, new THREE.AmbientLight(0xffffff, 0.35));
+  three.system = new THREE.Group(); three.system.rotation.x = CFG.tilt;
+  three.scene.add(three.system);
+  three.central = buildCentralForm(); three.system.add(three.central);
+  addEventListener('resize', () => {
+    three.camera.aspect = innerWidth / innerHeight; three.camera.updateProjectionMatrix();
+    three.renderer.setSize(innerWidth, innerHeight); three.labels.setSize(innerWidth, innerHeight);
+  });
+  three.clock = new THREE.Clock(); three.spinMult = 1;
+  three.fps = { acc: 0, n: 0, bad: 0, degraded: false };
+  three.ready = true;
+  tick();
+}
+initScene();
+
+// === INTERACTIONS: hover tooltip, click-to-zoom + side panel, ask-claude ===
+const ray = new THREE.Raycaster(), pointer = new THREE.Vector2();
+let hovered = null, selected = null;
+const CAM_HOME = { pos: new THREE.Vector3(0, 4.2, 9), look: new THREE.Vector3(0, 0, 0) };
+three.camLook = CAM_HOME.look.clone();
+
+function nodeAt(ev) {
+  const r = three.renderer.domElement.getBoundingClientRect();
+  pointer.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
+  pointer.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
+  ray.setFromCamera(pointer, three.camera);
+  return ray.intersectObjects([...three.nodes.values()], false)[0]?.object ?? null;
+}
+
+function setHover(mesh, on) {
+  const from = mesh.scale.x, to = on ? 1.1 : 1.0; // spec: +0.1 scale
+  tween(160, k => mesh.scale.setScalar(from + (to - from) * k));
+  mesh.material.emissiveIntensity = (on ? 1.4 : 1.0) * (mesh.userData.entity.status === 'queued' ? 0.55 : 1.0);
+}
+
+addEventListener('pointermove', ev => {
+  if (!three.ready || selected) return;
+  const m = nodeAt(ev);
+  if (m !== hovered) {
+    if (hovered) setHover(hovered, false);
+    hovered = m;
+    if (m) setHover(m, true);
+    document.body.style.cursor = m ? 'pointer' : '';
+  }
+  const tip = $('tooltip');
+  if (m) {
+    const e = m.userData.entity;
+    const g = e.gates ? ` · gates ${Object.values(e.gates).filter(v => v === 'pass').length}/4 ✓` : '';
+    tip.innerHTML = `<b>${e.pair ? `${e.pair} ${e.tf} · ${e.id}` : e.name}</b><br><small>${e.status}${g} · updated ${window.__state ? new Date(window.__state.fetchedAt).toLocaleTimeString() : '—'}</small>`;
+    tip.style.left = `${Math.min(ev.clientX + 14, innerWidth - 270)}px`;
+    tip.style.top = `${ev.clientY + 14}px`;
+    tip.classList.add('show');
+  } else tip.classList.remove('show');
+});
+
+function flyCam(toPos, toLook, ms = 500) {
+  const fp = three.camera.position.clone(), fl = three.camLook.clone();
+  tween(ms, k => {
+    three.camera.position.lerpVectors(fp, toPos, k);
+    three.camLook.lerpVectors(fl, toLook, k);
+    three.camera.lookAt(three.camLook);
+  });
+}
+
+const CHIP_ICON = { pass: '✓', fail: '✗', unknown: '?' };
+function select(mesh) {
+  if (hovered && hovered !== mesh) setHover(hovered, false);
+  hovered = null; $('tooltip').classList.remove('show');
+  selected = mesh;
+  const e = mesh.userData.entity;
+  const np = mesh.getWorldPosition(new THREE.Vector3());
+  const dir = CAM_HOME.pos.clone().sub(np).normalize();
+  flyCam(np.clone().add(dir.multiplyScalar(2)), np); // spec: 0.5s, ~2 units off the node
+  $('p-title').textContent = e.pair ? `${e.pair} ${e.tf}` : e.name;
+  $('p-sub').textContent = e.id ? `${e.id} · ${e.status}` : `${e.stage} · ${e.status}`;
+  $('p-chips').innerHTML = e.gates
+    ? Object.entries(e.gates).map(([k, v]) => `<span class="chip ${v}">${k} ${CHIP_ICON[v]}</span>`).join('')
+    : `<span class="chip unknown">pipeline · ${e.stage}</span>`;
+  $('p-blockers').innerHTML = e.blockers?.length
+    ? e.blockers.map(b => `<li>${b}</li>`).join('')
+    : '<li class="none">none on record</li>';
+  $('p-meta').textContent = window.__state
+    ? `commit ${window.__state.commit?.sha ?? '—'} · refreshed ${new Date(window.__state.fetchedAt).toLocaleTimeString()}`
+    : '';
+  $('panel').classList.add('open');
+}
+function deselect() {
+  if (!selected) return;
+  selected = null;
+  flyCam(CAM_HOME.pos.clone(), CAM_HOME.look.clone());
+  $('panel').classList.remove('open');
+}
+
+addEventListener('click', ev => {
+  if (!three.ready || ev.target.closest('#panel,#sidebar,#modal,#debug,#toast')) return;
+  const m = nodeAt(ev);
+  if (m) select(m); else deselect(); // click empty space = zoom out (spec)
+});
+$('p-close').addEventListener('click', deselect);
+addEventListener('keydown', ev => { if (ev.key === 'Escape') deselect(); });
+
+// Amendment 3: clipboard ALWAYS first, claude:// desktop deep link primary,
+// web ?q= secondary (contested support), never auto-submit — prefill only.
+function askClaude(e) {
+  const gates = e.gates ? Object.entries(e.gates).map(([k, v]) => `${k}:${v}`).join(', ') : `stage ${e.stage}`;
+  const prompt = e.pair
+    ? `Analyze strategy ${e.pair} ${e.tf} ${e.id}: status ${e.status}; gates ${gates}; blockers: ${e.blockers?.join('; ') || 'none'}. What's next?`
+    : `Analyze pipeline run ${e.name}: ${gates}, status ${e.status}. What's next?`;
+  navigator.clipboard?.writeText(prompt).catch(() => {});
+  toast('Prompt copied to clipboard — paste it if prefill is missing.');
+  const q = encodeURIComponent(prompt);
+  const webFallback = setTimeout(() => window.open(`https://claude.ai/new?q=${q}`, '_blank'), 700);
+  window.addEventListener('blur', () => clearTimeout(webFallback), { once: true }); // deep link took focus
+  location.href = `claude://claude.ai/new?q=${q}`;
+}
+$('p-ask').addEventListener('click', () => { if (selected) askClaude(selected.userData.entity); });
+
+// === TRANSITION TEST HARNESS: key `r` (or ?demo=2 auto-fires at 3.5s for headless shots) ===
+function demoMutate() {
+  if (!window.__state) return;
+  const s = structuredClone(window.__state);
+  if (s.legs[0]) s.legs[0].status = 'live';                     // first leg → green morph
+  s.legs = s.legs.slice(0, 1).concat(s.legs.slice(2));          // second leg exits (fade + ring re-layout)
+  s.pipeline.push({ name: 'DEMO Crypto', stage: 'queued', status: 'queued' }); // born from center
+  s.fetchedAt = new Date().toISOString();
+  render(s);
+}
+addEventListener('keydown', ev => {
+  if (ev.key === 'r') demoMutate();
+  if (ev.key === 't') { three.spinMult = 2; tween(1000, k => { three.spinMult = 2 - k; }); } // thinking stub (voice deferred)
+});
+
+// === DEMO MODE (?demo=1): FICTIONAL placeholder state — this file is served
+// from a public repo, so real legs/pipeline/blockers must never be baked in.
+// Real state only ever arrives via the token-authenticated fetch.
+const DEMO = new URLSearchParams(location.search).has('demo');
+function demoState() {
+  const gates = { port: 'fail', parity: 'fail', tag: 'unknown', card: 'unknown' };
+  const mk = (id, pair, tf, code2, blockers = []) => ({ id, pair, tf, code2, status: 'pending', gates: { ...gates }, blockers, sourceLine: 'demo' });
+  return {
+    fetchedAt: new Date().toISOString(), commit: { sha: 'demo000', date: new Date().toISOString() },
+    sessionName: 'demo', parseHealth: 'ok',
+    legs: [mk('0.00.001', 'EURUSD', 'H1', 'EU'), mk('0.00.002', 'AUDJPY', 'H4', 'AJ'),
+           mk('0.00.003', 'GBPCHF', 'M30', 'GF', ['Demo blocker — resolve the sample condition (placeholder text).']),
+           mk('0.00.004', 'NZDUSD', 'H1', 'NU')],
+    pipeline: [{ name: 'DEMO Stockpicker', stage: 'T0 demo in progress', status: 'running' },
+               { name: 'DEMO Futures', stage: 'queued', status: 'queued' }],
+  };
+}
+
+// === DATA LAYER ===
+async function gh(path, raw = false) {
+  const headers = { Authorization: `Bearer ${getToken()}`, Accept: raw ? 'application/vnd.github.raw+json' : 'application/vnd.github+json' };
+  if (etags.has(path)) headers['If-None-Match'] = etags.get(path);
+  const r = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/${path}`, { headers });
+  if (r.status === 401) { localStorage.removeItem(TOKEN_KEY); sessionStorage.removeItem(TOKEN_KEY); showAuthModal(); throw new Error('auth'); }
+  if (r.status === 304) return cache.get(path);          // unchanged — serve cached copy
+  if (!r.ok) throw new Error(`gh ${path} → ${r.status}`); // 403 rate-limit etc: stale badge, keep token
+  if (r.headers.get('etag')) etags.set(path, r.headers.get('etag'));
+  const body = raw ? await r.text() : await r.json();
+  cache.set(path, body);
+  return body;
+}
+
+async function poll() {
+  try {
+    const claudeMd = await gh('contents/CLAUDE.md', true);
+    const listing = await gh('contents/40-Sessions');
+    const sessionName = pickNewestSession(listing);
+    const sessionMd = sessionName ? await gh(`contents/40-Sessions/${encodeURIComponent(sessionName)}`, true) : '';
+    const commits = await gh('commits?per_page=1');
+    const commit = commits?.[0] ? { sha: commits[0].sha.slice(0, 7), date: commits[0].commit.committer.date } : null;
+    const state = parseVaultState({ claudeMd, sessionMd, sessionName, commit });
+    state.fetchedAt = new Date().toISOString();
+    lastGood = state; lastSuccessAt = new Date();
+    $('s-feed').textContent = 'live'; $('s-feed').className = 'badge ok';
+    render(state);
+  } catch (e) {
+    if (e.message === 'auth') return; // modal is up
+    $('s-feed').textContent = `stale (${lastSuccessAt ? lastSuccessAt.toLocaleTimeString() : 'no data yet'})`;
+    $('s-feed').className = 'badge stale';
+    console.warn('poll failed:', e.message);
+  }
+}
+
+// === RENDER (debug list — replaced by 3D reconcile in Tasks 5/6) ===
+function render(state) {
+  $('s-health').textContent = state.parseHealth; $('s-health').className = `badge ${state.parseHealth}`;
+  $('s-counts').textContent = `${state.legs.length} / ${state.pipeline.length}`;
+  $('s-commit').textContent = state.commit ? `${state.commit.sha} · ${new Date(state.commit.date).toLocaleString()}` : '—';
+  $('s-refresh').textContent = new Date(state.fetchedAt).toLocaleTimeString();
+  $('debug-list').innerHTML = [
+    ...state.legs.map(l => `<div class="leg"><span class="dot ${l.status}"></span>${l.pair} ${l.tf} · ${l.id} · ${l.status}
+      · <span style="color:var(--grey)">port:${l.gates.port} parity:${l.gates.parity} tag:${l.gates.tag} card:${l.gates.card}</span></div>`),
+    ...state.pipeline.map(p => `<div class="leg"><span class="dot ${p.status === 'running' ? 'pending' : 'unknown'}"></span>${p.name} · ${p.stage}</div>`),
+  ].join('') || '—';
+  sceneRender(state);
+  window.__state = state; // Task 6 reconcile hook + debugging
+}
+
+// === AUTH ===
+function showAuthModal() { $('modal').classList.remove('hidden'); $('pat').focus(); }
+$('save-pat').addEventListener('click', () => {
+  const v = $('pat').value.trim();
+  if (!v) return;
+  ($('remember').checked ? localStorage : sessionStorage).setItem(TOKEN_KEY, v);
+  $('pat').value = ''; $('modal').classList.add('hidden');
+  start();
+});
+$('pat').addEventListener('keydown', e => { if (e.key === 'Enter') $('save-pat').click(); });
+
+function start() { clearInterval(timer); poll(); timer = setInterval(poll, POLL_MS); }
+if (DEMO) {
+  const params = new URLSearchParams(location.search);
+  $('s-feed').textContent = 'demo'; render(demoState());
+  if (params.get('demo') === '2') setTimeout(demoMutate, 3500);
+  const sel = params.get('select'); // headless interaction shot: auto-select a node
+  if (sel) { document.body.classList.add('demo-instant'); setTimeout(() => { const m = three.nodes.get(sel); if (m) select(m); }, 1500); }
+} else getToken() ? start() : showAuthModal();
+</script>
+</body>
+</html>
